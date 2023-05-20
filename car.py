@@ -19,7 +19,6 @@ class CarBase():
 
     def update(self):
         acceleration, turn = self.player.update()
-        print(acceleration)
         self.vel += acceleration
         self.dir += turn 
         self.vel *= (1 - self.friction)

@@ -1,16 +1,19 @@
 import pygame
+import numpy as np
 
 import track
 import car
 import config 
 import event
 import graphics
-import interactions 
+import machineActions
 
 class GameBase():
     def __init__(self, player, track_width, track_size):
         self.player = player
-        self.track = track.TrackBase(track_width, track_size)
+        self.checkpoint = 1
+        self.obs = np.zeros(config.machine_obs_size)
+        self.track = track.TrackBase(track_width, track_size, self, self.obs)
         self.car = car.CarBase(self.player)
 
     def start(self):
@@ -25,16 +28,20 @@ class GameBase():
 
     def reset_track(self):
         self.checkpoint = 1
-        self.track.reset()
+        self.obs = np.zeros(config.machine_obs_size)
+        self.track.reset(self, self.obs)
 
     def reset_car(self):
         self.car.reset(self.track.start_pos, self.track.start_dir)
+        self.closest_car_point = 0
 
     def update(self):
-        self.track.update(self.car.pos)
+        self.closest_car_point = self.track.next_closest_track_point(self.closest_car_point, self.car.pos)
+        self.obs = machineActions.observe(self)
+        self.track.update(self.car.pos, self, self.obs)
         self.car.update()
 
-        next_checkpoint = interactions.checkpoint_passed(self.car.pos, self.track, self.checkpoint)
+        next_checkpoint = self.track.checkpoint_passed(self.car.pos, self.checkpoint)
         self.pass_checkpoint = self.checkpoint != next_checkpoint
         self.checkpoint = next_checkpoint
 
@@ -42,11 +49,11 @@ class GameBase():
         self.finish()
 
     def collision(self):
-        self.is_game_over = not interactions.point_on_track(self.car.pos, self.track, mode="car")
+        self.is_game_over = not self.track.point_is_on_track(self.closest_car_point, self.car.pos)
 
     def finish(self):
-        see_all_checkpoints = self.checkpoint == len(self.track.checkpoints)
-        self.is_win = interactions.point_cross_finish(self.car.pos, self.track) and see_all_checkpoints
+        see_all_checkpoints = self.checkpoint == 0
+        self.is_win = see_all_checkpoints
         
         
 class Game(GameBase):
@@ -58,7 +65,7 @@ class Game(GameBase):
         self.fps_clock = pygame.time.Clock()
 
         super().__init__(player, track_width, track_size)
-        self.track = track.TrackSprite(track_width, track_size)
+        self.track = track.TrackSprite(track_width, track_size, self, self.obs)
         self.car = car.CarSprite(player)
 
     def fps(self):

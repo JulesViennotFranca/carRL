@@ -63,25 +63,40 @@ track_size = [1500, 1500]
 track_width = 45
 track_color = (125, 125, 125)
 track_nbr_points = 150
+track_search_flattest_zone_size = 3
 
 # DQN variables
-dqn_hidden_sizes = [32, 64, 128, 256]
-dqn_lr = 0.005
+dqn_hidden_sizes = [128, 128, 128]
+dqn_lr = 0.0001
 dqn_batchsize = 128
-dqn_capacity = 1000
+dqn_capacity = 10000
 dqn_gamma = 0.99
-dqn_eps_start = 1.0
-dqn_eps_end = 0.1
-dqn_eps_decay = 0.999
+dqn_eps_start = 0.9
+dqn_eps_end = 0.05
+dqn_eps_decay = 0.99
 
 # Machine variables
-machine_nbr_search_dir = 10
+# machine_search_dirs = [0, np.pi]
+# offset = np.pi 
+# n = 6
+# alpha = (np.pi / 24 / offset) ** (1 / n)
+# for _ in range(n):
+#     offset *= alpha
+#     machine_search_dirs.append(offset)
+#     machine_search_dirs.append(- offset)
+machine_search_dirs = np.linspace(- np.pi, np.pi, 28, False)
+machine_search_dirs = np.array(machine_search_dirs)
+machine_know_self_vel = True
+machine_know_track_dir = False
+machine_obs_size = len(machine_search_dirs) + machine_know_self_vel + machine_know_track_dir
 machine_dp = 2
-machine_action_spand = 5
+machine_action_spand = 7
 
 # Training variables
 training_episodes = 2000
-training_render_step = 200
-training_info_step = 1000
-training_rewards = {"survive": -0.25, "checkpoint": 50, "win": 100, "loose": 0}
-training_max_steps = 2000
+training_render_step = 50
+training_info_step = 20
+training_learning_step = 6
+training_max_checkpoint_count = 15
+training_rewards_info = {"loose": 0, "time_out": 0, "win": 0, "checkpoint": 5, "survive": 4 / training_max_checkpoint_count}
+training_max_steps = 1000

@@ -1,9 +1,11 @@
 import numpy as np 
 import random
 import pygame
+import matplotlib.pyplot as plt
 
 import config
 import geometry
+import machineActions
 
 def random_points(n, scal):
     xscal = scal[0]
@@ -62,31 +64,23 @@ def smooth(points, rmin, amin):
             rpoints.append(points[i])
 
     n = len(rpoints)
-    apoints = []
-    for i in range(n):
-        vp = rpoints[(i-1)%n] - rpoints[i]
+    apoints = [rpoints[0], rpoints[1]]
+    for i in range(2, n+1):
+        vp = apoints[-2] - apoints[-1]
         ap = geometry.get_angle(vp)
-        vn = rpoints[(i+1)%n] - rpoints[i]
+        vn = rpoints[i%n] - apoints[-1]
         vn = geometry.apply_rotation(- ap, vn)
         an = geometry.get_angle(vn)
         if abs(an) > amin:
-            apoints.append(rpoints[i])
+            apoints.append(rpoints[i%n])
 
     n = len(apoints)
-    flatter = 0 
-    flatter_ind = 0
+    rpoints = []
     for i in range(n):
-        vp = rpoints[(i-1)%n] - rpoints[i]
-        ap = geometry.get_angle(vp)
-        vn = rpoints[(i+1)%n] - rpoints[i]
-        vn = geometry.apply_rotation(- ap, vn)
-        an = geometry.get_angle(vn)
-        if abs(an) > flatter:
-            flatter = abs(an)
-            flatter_ind = i
+        if geometry.get_norm(apoints[(i+1)%n] - apoints[i]) > rmin:
+            rpoints.append(apoints[i])
 
-    points = apoints[flatter_ind:] + apoints[:flatter_ind]
-    return points
+    return rpoints
 
 def bezier_curve_3(start, inter, end):
     T = np.linspace(0, 1, 50)
@@ -113,21 +107,25 @@ def bezier_curve_4(start, inter1, inter2, end, spand):
 def bezier_next_middle(middle, end):
     return 2 * end - middle 
 
-def bezier_compute_inter(p1, p2, p3):
+def bezier_compute_inter(p1, p2, p3, rmin):
     v1 = (p1 - p2)
     v3 = (p3 - p2) 
     v = v1 / geometry.get_norm(v1) + v3 / geometry.get_norm(v3)
     alpha = geometry.get_angle(v) + np.pi / 2
     inter1 = p2 + geometry.projection(alpha, v1) / 2
+    # while geometry.get_norm(p2 - inter1) < rmin:
+    #     inter1 += geometry.projection(alpha, v1) / 2
     inter2 = p2 + geometry.projection(alpha, v3) / 2
+    # while geometry.get_norm(p2 - inter2) < rmin:
+    #     inter2 += geometry.projection(alpha, v3) / 2
     return inter1, inter2
 
-def bezier_path(points, spand):
+def bezier_path(points, spand, rmin):
     n = len(points)
     P = []
     for i in range(n):
-        _, inter1 = bezier_compute_inter(points[i-1], points[i], points[(i+1)%n])
-        inter2, _ = bezier_compute_inter(points[i], points[(i+1)%n], points[(i+2)%n])
+        _, inter1 = bezier_compute_inter(points[i-1], points[i], points[(i+1)%n], rmin)
+        inter2, _ = bezier_compute_inter(points[i], points[(i+1)%n], points[(i+2)%n], rmin)
         P = P + bezier_curve_4(points[i], inter1, inter2, points[(i+1)%n], spand)
     return P
 
@@ -139,45 +137,110 @@ def adapt(points, spand, width):
             P.append((points[(i-1)%n] + p) / 2)
         if len(P) == 0 or geometry.get_norm(P[-1] - p) > spand:
             P.append(p)
+    P.pop()
+
     n = len(P)
+    config.track_search_flattest_zone_size = 3
+    flattest = np.pi * (2 * config.track_search_flattest_zone_size + 1)
+    flattest_ind = 0
+    for i in range(n):
+        sum_angle = 0
+        for j in range(-config.track_search_flattest_zone_size, config.track_search_flattest_zone_size + 1):
+            vp = P[(i+j-1)%n] - P[(i+j)%n]
+            ap = geometry.get_angle(vp)
+            vn = P[(i+j+1)%n] - P[(i+j)%n]
+            vn = geometry.apply_rotation(- ap, vn)
+            an = geometry.get_angle(vn)
+            sum_angle += np.pi - an
+        if sum_angle < flattest:
+            flattest = sum_angle
+            flattest_ind = i
+    P = P[flattest_ind:] + P[:flattest_ind]
+
     C = []
     for i, p in enumerate(P):
         if len(C) == 0 or geometry.get_norm(C[-1][0] - p) > width:
             C.append([p, geometry.get_angle(p - P[(i-1)%n])])
+    
     return C, np.array(P)
 
 def track_skeleton(n, width, lim):
     points = random_gauss_points(n, lim)
     hull = convex_hull(points)
-    rmin = 3 * width 
-    amin = max(2, 2 * np.arcsin(0.5 * width / rmin))
+    rmin = 5 * width 
+    amin = 2 * np.arcsin(2 * width / rmin)
     keypoints = smooth(hull, rmin, amin)
     spand = width / 5
-    path = bezier_path(keypoints, spand)
+    path = bezier_path(keypoints, spand, rmin / 2)
     return adapt(path, spand, width)
 
 class TrackBase():
-    def __init__(self, width, size):
+    def __init__(self, width, size, game, obs):
         self.width = width
         self.size = size
         self.nbr_point = sum(self.size) // 20
 
-        self.reset()
+        self.reset(game, obs)
 
-    def reset(self):
+    def reset(self, game, obs):
         self.checkpoints, self.track = track_skeleton(self.nbr_point, self.width, self.size)
         self.start_pos = self.track[0]
         self.start_dir = geometry.get_angle(self.track[1] - self.track[0])
+    
+    def incr_ind(self, ind):
+        if ind + 1 == len(self.track):
+            return 0 
+        else:
+            return ind + 1
 
-        self.opt_track = [self.track[0]]
-        self.opt_track_min = 0
-        self.opt_track_max = 0
+    def decr_ind(self, ind):
+        if ind == 0:
+            return len(self.track) - 1 
+        else:
+            return ind - 1
+    
+    def next_closest_track_point(self, closest_point, point):
+        ind = closest_point
+        while geometry.get_norm(point - self.track[self.incr_ind(ind)]) < geometry.get_norm(point - self.track[ind]):
+            ind = self.incr_ind(ind)
+        if ind == closest_point:
+            while geometry.get_norm(point - self.track[self.decr_ind(ind)]) < geometry.get_norm(point - self.track[ind]):
+                ind = self.decr_ind(ind)
+        return ind
+    
+    def point_is_on_track(self, closest_point, point):
+        return geometry.get_norm(point - self.track[closest_point]) < self.width
 
-        self.limit_track = [self.track[0]]
-        self.limit_track_min = 0
-        self.limit_track_max = 0
+    def checkpoint_passed(self, point, checkpoint):
+        dir = self.checkpoints[checkpoint][1]
+        v = point - self.checkpoints[checkpoint][0]
+        vd = geometry.apply_rotation(- dir, v)
+        diff_dir = geometry.get_angle(vd)
+        max_vel = config.acceleration_front_coef * (1 - config.friction_coef) / config.friction_coef
+        if geometry.get_norm(v) <= max(3 * self.width, max_vel) and abs(diff_dir) < np.pi / 2:
+            return (checkpoint + 1) % len(self.checkpoints)
+        else:
+            return checkpoint
 
-        self.update(self.start_pos)
+    def update(self, car_pos, game, obs):
+        pass
+
+class TrackSprite(pygame.sprite.Sprite, TrackBase):
+    def __init__(self, width, size, game, obs):
+        pygame.sprite.Sprite.__init__(self)
+
+        self.color = config.track_color
+
+        TrackBase.__init__(self, width, size, game, obs)
+
+    def reset(self, game, obs):
+        TrackBase.reset(self, game, obs)
+
+        self.fit_track = [self.track[0]]
+        self.fit_track_min = 0
+        self.fit_track_max = 0
+
+        self.update(self.start_pos, game, obs)
 
     def fit_to_window(self, car_pos, window, min, max, lim):
         n = len(self.track)
@@ -208,30 +271,11 @@ class TrackBase():
             p = window[-1]
         return window, min, max
 
-    def update(self, car_pos):
-        self.limit_track, self.limit_track_min, self.limit_track_max = self.fit_to_window(car_pos, self.limit_track, self.limit_track_min, self.limit_track_max, np.ones(2) * self.width)
-
-        lim_vec = np.array(config.resolution) / 2 + np.ones(2) * self.width
-        self.opt_track, self.opt_track_min, self.opt_track_max = self.fit_to_window(car_pos, self.opt_track, self.opt_track_min, self.opt_track_max, lim_vec)
-
-class TrackSprite(pygame.sprite.Sprite, TrackBase):
-    def __init__(self, width, size):
-        pygame.sprite.Sprite.__init__(self)
-
-        self.color = config.track_color
-
-        TrackBase.__init__(self, width, size)
-
-    def reset(self):
-        TrackBase.reset(self)
-
-        self.update_sprite(self.start_pos)
-
-    def update_sprite(self, car_pos):
+    def update_sprite(self, car_pos, game, obs):
         self.image = pygame.Surface(config.resolution).convert_alpha()
         self.image.fill((255, 255, 255, 0))
 
-        for p in self.opt_track:
+        for p in self.fit_track:
             pygame.draw.circle(self.image, self.color, p + config.screen_mid - car_pos, self.width)
 
         nbr = 10
@@ -254,12 +298,21 @@ class TrackSprite(pygame.sprite.Sprite, TrackBase):
             start_rect_black = list(start_rect_black)
             pygame.draw.polygon(self.image, (0, 0, 0), start_rect_black)
 
+
+        search_vecs = machineActions.captor(game)
+        for i, sv in enumerate(search_vecs):
+            pygame.draw.line(self.image, (0, 0, 0), config.screen_mid, config.screen_mid + obs[i] * sv)
+
         self.rect = self.image.get_rect()
         self.top_left = np.zeros(2)
-        self.rect.center = [config.resolution[0] / 2, config.resolution[1] / 2]
+        self.rect.center = list(config.screen_mid)
     
-    def update(self, car_pos):
-        TrackBase.update(self, car_pos)
-        self.update_sprite(car_pos)
+    def update(self, car_pos, game, obs):
+        TrackBase.update(self, car_pos, game, obs)
+
+        lim_vec = np.array(config.resolution) / 2 + np.ones(2) * self.width
+        self.fit_track, self.fit_track_min, self.fit_track_max = self.fit_to_window(car_pos, self.fit_track, self.fit_track_min, self.fit_track_max, lim_vec)
+
+        self.update_sprite(car_pos, game, obs)
 
         

@@ -2,7 +2,6 @@ import pygame
 
 import config
 
-
 class GameEvent():
     def __init__(self, type, data):
         self.type = type

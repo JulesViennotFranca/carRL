@@ -63,7 +63,8 @@ class DQNAgent():
 
     def act(self, obs):
         if random.random() < self.eps:
-            action = np.random.randint(0, self.act_dim)
+            action = np.random.randint(self.act_dim)
+            # print("random:", action)
         else:
             with torch.no_grad():
                 obs = torch.tensor(obs, dtype=torch.float32)
