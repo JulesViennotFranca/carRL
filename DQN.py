@@ -4,6 +4,7 @@ import torch.optim as optim
 import numpy as np
 import random
 from collections import deque
+import os
 
 class Network(nn.Module):
     def __init__(self, input_size, hidden_sizes, output_size):
@@ -43,7 +44,7 @@ class ReplayBuffer():
     def size(self):
         return len(self.memory)
     
-class DQNAgent():
+class Agent():
     def __init__(self, obs_dim, hidden_sizes, act_dim, lr, batch_size, capacity, gamma, eps_start, eps_end, eps_decay):
         self.obs_dim = obs_dim
         self.act_dim = act_dim
@@ -61,10 +62,22 @@ class DQNAgent():
         self.target_q.load_state_dict(self.q.state_dict())
         self.optimizer = optim.Adam(self.q.parameters(), lr=lr)
 
-    def act(self, obs):
-        if random.random() < self.eps:
+    def load(self, path):
+        if os.path.isfile(path):
+            print("loading pre-trained agent from:", path)
+            loader = torch.load(path)
+            self.q.load_state_dict(loader)
+            self.q.eval()
+            self.target_q.load_state_dict(self.q.state_dict())
+            self.target_q.eval()
+
+    def save(self, path):
+        print("saving trained agent to:", path)
+        torch.save(self.q.state_dict(), path)
+
+    def act(self, obs, eps=False):
+        if eps and random.random() < self.eps:
             action = np.random.randint(self.act_dim)
-            # print("random:", action)
         else:
             with torch.no_grad():
                 obs = torch.tensor(obs, dtype=torch.float32)

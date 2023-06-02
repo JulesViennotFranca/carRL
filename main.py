@@ -8,7 +8,7 @@ import player
 
 closed = False
 while not closed:
-    game = gamestate.Game(player.HumanPlayer(), config.track_width, config.track_size)
+    game = gamestate.Game(player.Human(), config.track_width, config.track_size)
     event.reset()
     button_pressed = graphics.draw_main_menu(game)
 

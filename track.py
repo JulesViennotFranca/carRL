@@ -58,27 +58,25 @@ def convex_hull(points):
 
 def smooth(points, rmin, amin):
     n = len(points)
-    rpoints = []
-    for i in range(n):
-        if geometry.get_norm(points[(i+1)%n] - points[i]) > rmin:
-            rpoints.append(points[i])
-
-    n = len(rpoints)
-    apoints = [rpoints[0], rpoints[1]]
-    for i in range(2, n+1):
+    apoints = [points[-1], points[0]]
+    for i in range(1, n):
         vp = apoints[-2] - apoints[-1]
         ap = geometry.get_angle(vp)
-        vn = rpoints[i%n] - apoints[-1]
+        vn = points[i] - apoints[-1]
         vn = geometry.apply_rotation(- ap, vn)
         an = geometry.get_angle(vn)
-        if abs(an) > amin:
-            apoints.append(rpoints[i%n])
+        if abs(an) > amin and i < n-1:
+            apoints.append(points[i])
+        if abs(an) < amin and i == n-1:
+            apoints.pop(0)
 
     n = len(apoints)
-    rpoints = []
-    for i in range(n):
-        if geometry.get_norm(apoints[(i+1)%n] - apoints[i]) > rmin:
+    rpoints = [apoints[0]]
+    for i in range(1, n):
+        if geometry.get_norm(apoints[i] - rpoints[-1]) > rmin:
             rpoints.append(apoints[i])
+    if geometry.get_norm(rpoints[0] - rpoints[-1]) > rmin:
+        rpoints.pop(0)
 
     return rpoints
 
@@ -109,15 +107,15 @@ def bezier_next_middle(middle, end):
 
 def bezier_compute_inter(p1, p2, p3, rmin):
     v1 = (p1 - p2)
-    v3 = (p3 - p2) 
+    v3 = (p3 - p2)
     v = v1 / geometry.get_norm(v1) + v3 / geometry.get_norm(v3)
     alpha = geometry.get_angle(v) + np.pi / 2
     inter1 = p2 + geometry.projection(alpha, v1) / 2
-    # while geometry.get_norm(p2 - inter1) < rmin:
-    #     inter1 += geometry.projection(alpha, v1) / 2
+    while geometry.get_norm(p2 - inter1) < rmin:
+        inter1 += geometry.projection(alpha, v1) / 2
     inter2 = p2 + geometry.projection(alpha, v3) / 2
-    # while geometry.get_norm(p2 - inter2) < rmin:
-    #     inter2 += geometry.projection(alpha, v3) / 2
+    while geometry.get_norm(p2 - inter2) < rmin:
+        inter2 += geometry.projection(alpha, v3) / 2
     return inter1, inter2
 
 def bezier_path(points, spand, rmin):
@@ -140,22 +138,22 @@ def adapt(points, spand, width):
     P.pop()
 
     n = len(P)
-    config.track_search_flattest_zone_size = 3
-    flattest = np.pi * (2 * config.track_search_flattest_zone_size + 1)
-    flattest_ind = 0
-    for i in range(n):
-        sum_angle = 0
-        for j in range(-config.track_search_flattest_zone_size, config.track_search_flattest_zone_size + 1):
-            vp = P[(i+j-1)%n] - P[(i+j)%n]
-            ap = geometry.get_angle(vp)
-            vn = P[(i+j+1)%n] - P[(i+j)%n]
-            vn = geometry.apply_rotation(- ap, vn)
-            an = geometry.get_angle(vn)
-            sum_angle += np.pi - an
-        if sum_angle < flattest:
-            flattest = sum_angle
-            flattest_ind = i
-    P = P[flattest_ind:] + P[:flattest_ind]
+    # config.track_search_flattest_zone_size = 3
+    # flattest = np.pi * (2 * config.track_search_flattest_zone_size + 1)
+    # flattest_ind = 0
+    # for i in range(n):
+    #     sum_angle = 0
+    #     for j in range(-config.track_search_flattest_zone_size, config.track_search_flattest_zone_size + 1):
+    #         vp = P[(i+j-1)%n] - P[(i+j)%n]
+    #         ap = geometry.get_angle(vp)
+    #         vn = P[(i+j+1)%n] - P[(i+j)%n]
+    #         vn = geometry.apply_rotation(- ap, vn)
+    #         an = geometry.get_angle(vn)
+    #         sum_angle += np.pi - abs(an)
+    #     if sum_angle < flattest:
+    #         flattest = sum_angle
+    #         flattest_ind = i
+    # P = P[flattest_ind:] + P[:flattest_ind]
 
     C = []
     for i, p in enumerate(P):
@@ -165,13 +163,15 @@ def adapt(points, spand, width):
     return C, np.array(P)
 
 def track_skeleton(n, width, lim):
-    points = random_gauss_points(n, lim)
-    hull = convex_hull(points)
-    rmin = 5 * width 
-    amin = 2 * np.arcsin(2 * width / rmin)
-    keypoints = smooth(hull, rmin, amin)
+    keypoints = []
+    while len(keypoints) <= 2:
+        points = random_gauss_points(n, lim)
+        hull = convex_hull(points)
+        rmin = 5 * width 
+        amin = 2 * np.arcsin(2 * width / rmin)
+        keypoints = smooth(hull, rmin, amin)
     spand = width / 5
-    path = bezier_path(keypoints, spand, rmin / 2)
+    path = bezier_path(keypoints, spand, rmin / 3)
     return adapt(path, spand, width)
 
 class TrackBase():
@@ -179,8 +179,6 @@ class TrackBase():
         self.width = width
         self.size = size
         self.nbr_point = sum(self.size) // 20
-
-        self.reset(game, obs)
 
     def reset(self, game, obs):
         self.checkpoints, self.track = track_skeleton(self.nbr_point, self.width, self.size)
@@ -302,6 +300,7 @@ class TrackSprite(pygame.sprite.Sprite, TrackBase):
         search_vecs = machineActions.captor(game)
         for i, sv in enumerate(search_vecs):
             pygame.draw.line(self.image, (0, 0, 0), config.screen_mid, config.screen_mid + obs[i] * sv)
+        pygame.draw.line(self.image, (0, 0, 255), config.screen_mid, config.screen_mid + geometry.angle_to_vector(game.car.dir + obs[-1], self.width))
 
         self.rect = self.image.get_rect()
         self.top_left = np.zeros(2)
