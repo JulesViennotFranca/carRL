@@ -12,18 +12,16 @@ import event
 import player
 
 def render(agent):
-    eps_tamp = agent.eps
-    agent.eps = 0
     mplayer = player.Machine(agent)
     game = gamestate.Game(mplayer, config.track_width, config.track_size)
     game.start()
     mplayer.set_game(game)
+    mplayer.reset()
     event.reset()
     while not (event.closed() or game.is_game_over or game.is_win or event.quit()):
         event.update()
         game.update()
     pygame.quit()
-    agent.eps = eps_tamp
 
 def train_agent(agent, episodes, rewards, max_steps):
     agent.load(config.training_path)
@@ -33,13 +31,15 @@ def train_agent(agent, episodes, rewards, max_steps):
     rewards = []
     steps = []
     for i in range(episodes):
+        if i % int((episodes+1) / (config.dqn_lr_shrink_nbr+1)) == 0:
+            agent.update_lr(config.dqn_lr_shrink_factor)
         obs = env.reset()
         obs = np.reshape(obs, [1, config.machine_obs_size])
         obs = torch.tensor(obs).float()
         done = False
         episode_reward = 0
         while not done:
-            action = agent.act(obs, eps=True)
+            action = agent.act(obs)
             next_obs, reward, done, _ = env.step(action)
             next_obs = np.reshape(next_obs, [1, config.machine_obs_size])
             next_obs = torch.tensor(next_obs).float()
@@ -49,12 +49,12 @@ def train_agent(agent, episodes, rewards, max_steps):
             total_steps += 1
             if total_steps % config.training_learning_step == 0:
                 agent.learn()
-        print(f"Episode {i+1} Reward: {round(episode_reward, 1)} Total Stepy: {total_steps} Steps: {total_steps - last_total_steps}")
+        print(f"Episode {i+1} Reward: {round(episode_reward, 1)} Total Stepy: {total_steps} Steps: {total_steps - last_total_steps} Size: {env.game.track.size} Width: {env.game.track.width}")
         rewards.append(episode_reward)
         steps.append(total_steps - last_total_steps)
         last_total_steps = total_steps
         if i % config.training_info_step == config.training_info_step - 1:
-            print(f"-> Pourcentage {100 * (i+1) / episodes} Rewards mean: {round(sum(rewards[-config.training_info_step:]) / len(rewards[-config.training_info_step:]), 4)} Steps mean: {sum(steps[-config.training_info_step:]) / len(steps[-config.training_info_step:])} Epsilon: {round(agent.eps, 3)} Action Spand: {round(env.action_spand)}")
+            print(f"-> Pourcentage {100 * (i+1) / episodes} Rewards mean: {round(sum(rewards[-config.training_info_step:]) / len(rewards[-config.training_info_step:]), 4)} Steps mean: {sum(steps[-config.training_info_step:]) / len(steps[-config.training_info_step:])} Epsilon: {round(agent.eps, 3)}")
         if i % config.training_render_step == config.training_render_step - 1:
             render(agent)
     env.close()

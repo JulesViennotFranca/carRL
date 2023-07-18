@@ -60,7 +60,9 @@ class Agent():
         self.q = Network(self.obs_dim, hidden_sizes, self.act_dim)
         self.target_q = Network(self.obs_dim, hidden_sizes, self.act_dim)
         self.target_q.load_state_dict(self.q.state_dict())
-        self.optimizer = optim.Adam(self.q.parameters(), lr=lr)
+
+        self.lr = lr
+        self.optimizer = optim.Adam(self.q.parameters(), lr=self.lr)
 
     def load(self, path):
         if os.path.isfile(path):
@@ -75,8 +77,8 @@ class Agent():
         print("saving trained agent to:", path)
         torch.save(self.q.state_dict(), path)
 
-    def act(self, obs, eps=False):
-        if eps and random.random() < self.eps:
+    def act(self, obs):
+        if random.random() < self.eps:
             action = np.random.randint(self.act_dim)
         else:
             with torch.no_grad():
@@ -112,6 +114,10 @@ class Agent():
     def update_eps(self):
         self.eps *= self.eps_decay
         self.eps = max(self.eps_end, self.eps)
+
+    def update_lr(self, shrink_factor):
+        self.lr /= shrink_factor
+        self.optimizer = optim.Adam(self.q.parameters(), lr=self.lr)
 
     def update_replay(self, exp):
         self.replay.add(exp)

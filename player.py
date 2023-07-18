@@ -1,5 +1,6 @@
 import event
 import machineActions
+import config
 
 class Training():
     def __init__(self):
@@ -23,11 +24,18 @@ class Machine():
     def __init__(self, brain):
         super().__init__()
         self.brain = brain
+        self.action_counter = config.machine_action_spand
 
     def set_game(self, game):
         self.game = game
+
+    def reset(self):
+        self.action_counter = config.machine_action_spand
     
     def update(self):
-        obs = machineActions.observe(self.game)
-        act = self.brain.act(obs)
-        return machineActions.act(act)
+        if self.action_counter == config.machine_action_spand:
+            obs = machineActions.observe(self.game)
+            self.act = self.brain.act(obs)
+            self.action_counter = 0
+        self.action_counter += 1
+        return machineActions.act(self.act)

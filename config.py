@@ -66,14 +66,16 @@ track_nbr_points = 150
 track_search_flattest_zone_size = 3
 
 # DQN variables
-dqn_hidden_sizes = [128, 128, 128, 128, 128]
-dqn_lr = 0.0001
-dqn_batchsize = 128
+dqn_hidden_sizes = [128, 128, 128, 128]
+dqn_lr = 0.001
+dqn_lr_shrink_factor = 10
+dqn_lr_shrink_nbr = 2
+dqn_batchsize = 64
 dqn_capacity = 10000
 dqn_gamma = 0.99
 dqn_eps_start = 0.9
-dqn_eps_end = 0.05
-dqn_eps_decay = 0.997
+dqn_eps_end = 0.1
+dqn_eps_decay = 0.999
 
 # Machine variables
 machine_search_dirs = np.linspace(- np.pi, np.pi, 28, False)
@@ -82,15 +84,13 @@ machine_know_self_vel = True
 machine_know_track_dir = True
 machine_obs_size = len(machine_search_dirs) + machine_know_self_vel + machine_know_track_dir
 machine_dp = 2
-machine_action_spand_start = 10
-machine_action_spand_decay = 0.999
-machine_action_spand_end = 1
+machine_action_spand = 7
 
 # Training variables
 training_episodes = 2000
 training_render_step = 50
 training_info_step = 20
 training_learning_step = 6
-training_rewards_info = {"loose": 0, "time_out": -5, "win": 14, "checkpoint": 14, "survive": - 4}
+training_rewards_info = {"loose": -2, "time_out": -1, "win": 2, "checkpoint": 2, "survive": 0}
 training_max_steps = 1000
-training_path = "agents/decaying_action_spand/first_one.pt"
+training_path = "agents/fixed_action_spand/first_one.pt"

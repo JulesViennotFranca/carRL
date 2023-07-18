@@ -13,17 +13,13 @@ class Env(gym.Env):
     def __init__(self, rewards, max_steps):
         self.rewards = rewards
         self.max_steps = max_steps
-        self.action_spand = config.machine_action_spand_start
 
     def reset(self):
-        track_width = max(20, int(random.gauss(50, 10)))
-        track_size = [max(500, int(random.gauss(2000, 500))) for _ in range(2)]
+        track_width = min(70, max(30, int(random.gauss(50, 10))))
+        track_size = [min(3000, max(1000, int(random.gauss(2000, 500)))) for _ in range(2)]
         self.player = player.Training()
         self.game = gamestate.GameBase(self.player, track_width, track_size)
         self.game.start()
-
-        if self.action_spand > config.machine_action_spand_end:
-            self.action_spand *= config.machine_action_spand_decay
 
         self.step_count = 0
         self.checkpoint_step_count = 0
@@ -37,7 +33,7 @@ class Env(gym.Env):
         self.player.set_action(acc, turn)
 
         reward = 0
-        for _ in range(round(self.action_spand)):
+        for _ in range(config.machine_action_spand):
             self.game.update()
         
             obs = machineActions.observe(self.game)
